@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa de Proveedores y Rutas</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    #map { width: 100vw; height: 100vh; }
+    .panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 999;
+      width: 280px;
+    }
+    .panel button { margin-top: 10px; width: 100%; padding: 8px; }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</head>
+<body>
+  <div class="panel">
+    <h3>Ruta entre puntos</h3>
+    <p><b>Inicio:</b> <span id="inicioTxt">—</span></p>
+    <p><b>Destino:</b> <span id="destinoTxt">—</span></p>
+    <p><b>Distancia:</b> <span id="distanciaTxt">0 km</span></p>
+    <p><b>Tiempo:</b> <span id="tiempoTxt">0 min</span></p>
+    <p><b>Combustible (MXN):</b> <span id="combTxt">0</span></p>
+    
+    <button onclick="abrirGoogleMaps()">Abrir en Google Maps</button>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    const map = L.map('map').setView([19.43, -99.13], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    let inicio = null;
+    let destino = null;
+    let rutaLinea = null;
+
+    const precioGasolina = 23.0; // MXN/L
+    const rendimiento = 12; // km/L
+
+    map.on('click', (e) => {
+      destino = e.latlng;
+      document.getElementById("destinoTxt").innerText = `${destino.lat.toFixed(4)}, ${destino.lng.toFixed(4)}`;
+      calcularRuta();
+    });
+
+    map.on('contextmenu', (e) => {
+      inicio = e.latlng;
+      document.getElementById("inicioTxt").innerText = `${inicio.lat.toFixed(4)}, ${inicio.lng.toFixed(4)}`;
+      calcularRuta();
+    });
+
+    function calcularRuta() {
+      if (!inicio || !destino) return;
+
+      const R = 6371;
+      const dLat = (destino.lat - inicio.lat) * Math.PI/180;
+      const dLon = (destino.lng - inicio.lng) * Math.PI/180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(inicio.lat*Math.PI/180) * Math.cos(destino.lat*Math.PI/180) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distancia = R * c;
+
+      const tiempo = (distancia / 60) * 60;
+      const litros = distancia / rendimiento;
+      const costo = litros * precioGasolina;
+
+      document.getElementById("distanciaTxt").innerText = distancia.toFixed(2) + " km";
+      document.getElementById("tiempoTxt").innerText = tiempo.toFixed(1) + " min";
+      document.getElementById("combTxt").innerText = costo.toFixed(2);
+
+      if (rutaLinea) map.removeLayer(rutaLinea);
+      rutaLinea = L.polyline([inicio, destino]).addTo(map);
+    }
+
+    function abrirGoogleMaps() {
+      if (!inicio || !destino) return;
+      const url = `https://www.google.com/maps/dir/${inicio.lat},${inicio.lng}/${destino.lat},${destino.lng}`;
+      window.open(url, '_blank');
+    }
+  </script>
+</body>
+</html>
