@@ -3,173 +3,135 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mapa Proveedores + Rutas Inteligentes</title>
+  <title>Mapa Proveedores – Reparado</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js">function toggleDarkMode(){ document.body.classList.toggle('dark-mode'); }
-</script>
   <style>
-    body { margin: 0; font-family: Arial; }
+    body { margin: 0; font-family: Arial, sans-serif; }
     #map { height: 100vh; width: 100vw; }
-
     .panel {
       position: absolute; top: 10px; left: 10px;
       background: #fff; padding: 15px;
       border-radius: 10px; width: 300px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
       z-index: 9999;
-      max-height: 90vh; overflow-y: auto;
     }
-
-    .provider-list li { cursor:pointer; padding:5px; border-bottom:1px solid #eee; }
-    .dark-mode { filter: invert(1) hue-rotate(180deg); }
+    .provider-list li { cursor:pointer; padding:5px; }
+    .dark-mode { background: #111; color: #eee; }
+    .dark-mode .panel { background:#1e1e1e; }
   </style>
 </head>
 <body>
+
 <div class="panel">
   <h2>Rutas Inteligentes</h2>
-  <label>Vehículo:
-    <select id="vehiculoSelect">
-      <option value="camioneta">Camioneta</option>
-      <option value="moto">Moto</option>
-      <option value="camion">Camión</option>
-    </select>
-  </label><br>
-  <label><input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()"> Modo oscuro</label><br>
 
-  <h3>Proveedores (Cancún, Veracruz, Tlaxcala)</h3>
+  <label><input type="checkbox" id="darkModeToggle"> Modo oscuro</label><br><br>
+
+  <h3>Proveedores</h3>
   <ul class="provider-list" id="listaProveedores"></ul>
 
   <h3>Ruta</h3>
   <p><b>Inicio:</b> <span id="inicioTxt">—</span></p>
   <p><b>Destino:</b> <span id="destinoTxt">—</span></p>
-
   <p><b>Distancia:</b> <span id="distanciaTxt">0 km</span></p>
   <p><b>Tiempo:</b> <span id="tiempoTxt">0 min</span></p>
-  <p><b>Combustible (MXN):</b> <span id="combTxt">0</span></p>
-  <p><b>Tráfico:</b> <span id="traficoTxt">Normal</span></p>
+  <p><b>Combustible:</b> <span id="combTxt">0 MXN</span></p>
 
-  <h3>Opciones</h3>
-  <label><input type="checkbox" id="evitarZonas"> Evitar zonas bloqueadas</label><br>
-  <button onclick="iniciarSimulacion()">Simular viaje</button>
-  <button onclick="abrirGoogleMaps()">Abrir en Google Maps</button>
+  <button id="simBtn">Simular viaje</button>
+  <button id="openGM">Abrir en Google Maps</button>
 </div>
 
 <div id="map"></div>
 
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
 <script>
-  const iconosVehiculo = {
-    camioneta: 'https://cdn-icons-png.flaticon.com/512/743/743922.png',
-    moto: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png',
-    camion: 'https://cdn-icons-png.flaticon.com/512/743/743892.png'
-  };
+function toggleDarkMode(){ document.body.classList.toggle('dark-mode'); }
 
-  const map = L.map('map').setView([19.43, -99.13], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const map = L.map('map').setView([19.43, -99.13], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-  let inicio = null;
-  let destino = null;
-  let rutaLinea = null;
-  let marcadorSim = null;
-  let rutaCoords = [];
+let inicio = null;
+let destino = null;
+let rutaLinea = null;
+let marcador = null;
+let rutaCoords = [];
 
-  const proveedores = [
-    { nombre:"Proveedor Cancún 1", lat:21.1619, lng:-86.8515 },
-    { nombre:"Proveedor Cancún 2", lat:21.1211, lng:-86.8975 },
+const proveedores = [
+  { nombre:"Cancún 1", lat:21.1619, lng:-86.8515 },
+  { nombre:"Veracruz 1", lat:19.1738, lng:-96.1342 },
+  { nombre:"Tlaxcala 1", lat:19.3139, lng:-98.2416 }
+];
 
-    { nombre:"Proveedor Veracruz 1", lat:19.1738, lng:-96.1342 },
-    { nombre:"Proveedor Veracruz 2", lat:19.2094, lng:-96.1579 },
-
-    { nombre:"Proveedor Tlaxcala 1", lat:19.3139, lng:-98.2416 },
-    { nombre:"Proveedor Tlaxcala 2", lat:19.3286, lng:-98.2322 }
-  ];
-
-  const lista = document.getElementById("listaProveedores");
-  proveedores.forEach(p => {
-    const li = document.createElement("li");
-    li.textContent = p.nombre;
-    li.onclick = () => seleccionarProveedor(p);
-    lista.appendChild(li);
-  });
-
-  const precioGasolina = 23;
-  const rendimiento = 12;
-
-  proveedores.forEach(p => L.marker([p.lat,p.lng]).addTo(map).bindPopup(p.nombre));
-
-  map.on('contextmenu', e => { inicio = e.latlng; inicioTxt.textContent = `${inicio.lat.toFixed(4)}, ${inicio.lng.toFixed(4)}`; calcularRuta(); });
-  map.on('click', e => { destino = e.latlng; destinoTxt.textContent = `${destino.lat.toFixed(4)}, ${destino.lng.toFixed(4)}`; calcularRuta(); });
-
-  function seleccionarProveedor(p) {
-    destino = L.latLng(p.lat, p.lng);
-    destinoTxt.textContent = `${p.lat}, ${p.lng}`;
+// Mostrar proveedores
+const lista = document.getElementById("listaProveedores");
+proveedores.forEach(p=>{
+  const li=document.createElement("li");
+  li.textContent=p.nombre;
+  li.onclick=()=>{
+    destino = L.latLng(p.lat,p.lng);
+    document.getElementById('destinoTxt').textContent = `${p.lat}, ${p.lng}`;
     calcularRuta();
   }
+  lista.appendChild(li);
+});
 
-  async function calcularRuta() {
-    if (!inicio || !destino) return;
+proveedores.forEach(p=> L.marker([p.lat,p.lng]).addTo(map).bindPopup(p.nombre));
 
-    let url = `https://router.project-osrm.org/route/v1/driving/${inicio.lng},${inicio.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`;
+map.on('contextmenu', e=>{
+  inicio = e.latlng;
+  document.getElementById('inicioTxt').textContent = `${inicio.lat.toFixed(4)}, ${inicio.lng.toFixed(4)}`;
+  calcularRuta();
+});
 
-    const evitar = document.getElementById("evitarZonas").checked;
-    if (evitar) {
-      traficoTxt.textContent = "Zona evitada";
-    }
+map.on('click', e=>{
+  destino = e.latlng;
+  document.getElementById('destinoTxt').textContent = `${destino.lat.toFixed(4)}, ${destino.lng.toFixed(4)}`;
+  calcularRuta();
+});
 
-    const r = await fetch(url);
-    const data = await r.json();
-    if (!data.routes) return;
+async function calcularRuta(){
+  if(!inicio || !destino) return;
 
-    const ruta = data.routes[0];
+  const url = `https://router.project-osrm.org/route/v1/driving/${inicio.lng},${inicio.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`;
+  const r = await fetch(url);
+  const data = await r.json();
+  if(!data.routes || !data.routes.length) return;
 
-    const km = ruta.distance / 1000;
-    const min = ruta.duration / 60;
-    const litros = km / rendimiento;
-    const costo = litros * precioGasolina;
+  const ruta = data.routes[0];
+  rutaCoords = ruta.geometry.coordinates;
 
-    rutaCoords = ruta.geometry.coordinates;
+  const km = ruta.distance/1000;
+  const min = ruta.duration/60;
+  const costo = (km/12)*23;
 
-    distanciaTxt.textContent = km.toFixed(2) + " km";
-    tiempoTxt.textContent = min.toFixed(1) + " min";
-    combTxt.textContent = costo.toFixed(2);
+  document.getElementById('distanciaTxt').textContent = km.toFixed(2)+" km";
+  document.getElementById('tiempoTxt').textContent = min.toFixed(1)+" min";
+  document.getElementById('combTxt').textContent = costo.toFixed(2)+" MXN";
 
-    const trafico = Math.random() < 0.3 ? "Pesado" : "Normal";
-    traficoTxt.textContent = trafico;
+  if(rutaLinea) map.removeLayer(rutaLinea);
 
-    if (rutaLinea) map.removeLayer(rutaLinea);
-    rutaLinea = L.polyline(rutaCoords.map(c => [c[1], c[0]])).addTo(map);
-  }
+  const puntos = rutaCoords.map(c=>[c[1],c[0]]);
+  rutaLinea = L.polyline(puntos,{color:'blue'}).addTo(map);
+  map.fitBounds(puntos);
+}
 
-  async function notificarLlegada() {
-    if (Notification.permission !== 'granted') {
-      await Notification.requestPermission();
-    }
-    if (Notification.permission === 'granted') {
-      new Notification('Has llegado a tu destino 🚗📍');
-    }
-  }
+function iniciarSimulacion(){
+  if(!rutaCoords.length) return alert("Genera una ruta primero.");
+  if(marcador) map.removeLayer(marcador);
+  const [lng,lat] = rutaCoords[0];
+  marcador = L.marker([lat,lng]).addTo(map);
+}
 
-  function iniciarSimulacion() {
-    if (!rutaCoords.length) return alert("Primero genera una ruta.");
+function abrirGoogleMaps(){
+  if(!inicio || !destino) return alert("Selecciona inicio y destino.");
+  window.open(`https://www.google.com/maps/dir/${inicio.lat},${inicio.lng}/${destino.lat},${destino.lng}`);
+}
 
-    let i = 0;
-    if (marcadorSim) map.removeLayer(marcadorSim);
-
-    marcadorSim = L.marker([rutaCoords[0][1], rutaCoords[0][0]]).addTo(map);
-
-    let velocidad = 50;
-    const interval = setInterval(() =>(() => {
-      if (i >= rutaCoords.length) return clearInterval(interval);
-      const [lng,lat] = rutaCoords[i];
-      marcadorSim.setLatLng([lat,lng]);
-      i++;
-      if (i === rutaCoords.length - 1) notificarLlegada();
-    }, 100);
-  }
-
-  function abrirGoogleMaps() {
-    if (!inicio || !destino) return;
-    window.open(`https://www.google.com/maps/dir/${inicio.lat},${inicio.lng}/${destino.lat},${destino.lng}`);
-  }
+document.getElementById('darkModeToggle').onclick = toggleDarkMode;
+document.getElementById('simBtn').onclick = iniciarSimulacion;
+document.getElementById('openGM').onclick = abrirGoogleMaps;
 </script>
+
 </body>
 </html>
